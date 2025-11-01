@@ -20,34 +20,41 @@ from peft import (
 import warnings
 warnings.filterwarnings("ignore")
 
-# 设置设备
+# Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"使用设备: {device}")
+print(f"Using device: {device}")
 
-# 数据预处理函数
+# Data preprocessing function
 def load_and_preprocess_data(csv_path):
-    """加载和预处理数据"""
-    print("正在加载数据...")
-    df = pd.read_csv(csv_path)[:1000]  # 限制样本数量
+    """Load and preprocess data"""
+    print("Loading data...")
+    df = pd.read_csv(csv_path)[:1000]  # limit number of samples
     
-    # 过滤有效数据
+    # Filter valid data
     df = df[df['Lsa_summary'].notna() & df['risk_deepseek'].notna()]
-    df = df[df['risk_deepseek'] != 0]  # 移除无效的风险标签
+    df = df[df['risk_deepseek'] != 0]  # remove invalid risk labels
     
-    print(f"有效数据数量: {len(df)}")
-    print(f"风险分布: {df['risk_deepseek'].value_counts().sort_index()}")
+    print(f"Valid data count: {len(df)}")
+    print(f"Risk distribution: {df['risk_deepseek'].value_counts().sort_index()}")
     
     return df
 
 def create_prompt_template(text, risk_score, stock_symbol="STOCK"):
-    """创建训练提示模板 - 使用风险评估格式"""
-    # 使用与risk_deepseek_deepinfra.py相同的对话格式
-    system_prompt = "Forget all your previous instructions. You are a financial expert specializing in risk assessment for stock recommendations. Based on a specific stock, provide a risk score from 1 to 5, where: 1 indicates very low risk, 2 indicates low risk, 3 indicates moderate risk (default if the news lacks any clear indication of risk), 4 indicates high risk, and 5 indicates very high risk. 1 summarized news will be passed in each time. Provide the score in the format shown below in the response from the assistant."
+    """Create training prompt template – using risk assessment format"""
+    # Use the same conversation format as in risk_deepseek_deepinfra.py
+    system_prompt = (
+        "Forget all your previous instructions. You are a financial expert "
+        "specializing in risk assessment for stock recommendations. Based on a specific stock, "
+        "provide a risk score from 1 to 5, where: 1 indicates very low risk, "
+        "2 indicates low risk, 3 indicates moderate risk (default if the news lacks any clear indication of risk), "
+        "4 indicates high risk, and 5 indicates very high risk. One summarized news item will be passed in each time. "
+        "Provide the score in the format shown below in the assistant's response."
+    )
     
-    # 构建用户输入
+    # Construct user input
     user_content = f"News to Stock Symbol -- {stock_symbol}: {text}"
     
-    # 构建完整的对话
+    # Build full conversation
     conversation = f"""System: {system_prompt}
 
 User: News to Stock Symbol -- AAPL: Apple (AAPL) increases 22%
@@ -65,8 +72,8 @@ Assistant: {risk_score}"""
     return conversation
 
 def prepare_dataset(df, tokenizer, max_length=512):
-    """准备训练数据集"""
-    print("正在准备数据集...")
+    """Prepare the training dataset"""
+    print("Preparing dataset...")
     
     texts = []
     labels = []
@@ -74,7 +81,7 @@ def prepare_dataset(df, tokenizer, max_length=512):
     for _, row in df.iterrows():
         text = row['Lsa_summary']
         risk_score = int(row['risk_deepseek'])
-        stock_symbol = row.get('Stock_symbol', 'STOCK')  # 获取股票符号，如果没有则使用默认值
+        stock_symbol = row.get('Stock_symbol', 'STOCK')  # get stock symbol, default if missing
         
         if pd.isna(text) or text == '':
             continue
@@ -83,21 +90,21 @@ def prepare_dataset(df, tokenizer, max_length=512):
         texts.append(prompt)
         labels.append(risk_score)
     
-    # 分割训练集和验证集 (80% 训练, 20% 验证)
+    # Split into training and validation sets (80% train, 20% validation)
     train_texts, eval_texts, train_labels, eval_labels = train_test_split(
         texts, labels, test_size=0.2, random_state=42, stratify=None
     )
     
-    print(f"训练集大小: {len(train_texts)}")
-    print(f"验证集大小: {len(eval_texts)}")
+    print(f"Training set size: {len(train_texts)}")
+    print(f"Validation set size: {len(eval_texts)}")
     
-    # 创建训练数据集
+    # Create training dataset
     train_dataset = Dataset.from_dict({
         'text': train_texts,
         'label': train_labels
     })
     
-    # 创建验证数据集
+    # Create validation dataset
     eval_dataset = Dataset.from_dict({
         'text': eval_texts,
         'label': eval_labels
@@ -111,11 +118,11 @@ def prepare_dataset(df, tokenizer, max_length=512):
             max_length=max_length,
             return_tensors='pt'
         )
-        # 对于语言模型，labels就是input_ids
+        # For language modeling, labels are the same as input_ids
         tokenized['labels'] = tokenized['input_ids'].clone()
         return tokenized
     
-    # 对训练集和验证集进行tokenization
+    # Tokenize both training and validation datasets
     train_tokenized = train_dataset.map(
         tokenize_function,
         batched=True,
@@ -131,29 +138,28 @@ def prepare_dataset(df, tokenizer, max_length=512):
     return train_tokenized, eval_tokenized
 
 def create_model_and_tokenizer():
-    """创建模型和分词器"""
-    print("正在加载模型和分词器...")
+    """Create model and tokenizer"""
+    print("Loading model and tokenizer...")
     
-    model_name = "Qwen/Qwen2.5-7B-Instruct"
+    model_name = "/root/code/Finance/Qwen"
     
-    # 加载分词器
+    # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
     
-    # 加载模型
+    # Load model
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.float16,
         device_map="auto",
-        trust_remote_code=True,
-        load_in_8bit=True,
+        trust_remote_code=True
     )
     
-    # 准备模型进行训练
+    # Prepare model for LoRA fine-tuning
     model = prepare_model_for_kbit_training(model)
     
-    # 配置LoRA
+    # LoRA configuration
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
         r=16,  # LoRA rank
@@ -163,17 +169,17 @@ def create_model_and_tokenizer():
         bias="none",
     )
     
-    # 应用LoRA
+    # Apply LoRA
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
     
     return model, tokenizer
 
 def train_model(model, tokenizer, train_dataset, eval_dataset, output_dir="./qwen_risk_model"):
-    """训练模型"""
-    print("开始训练模型...")
+    """Train the model"""
+    print("Starting training...")
     
-    # 训练参数
+    # Training arguments
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=3,
@@ -190,18 +196,18 @@ def train_model(model, tokenizer, train_dataset, eval_dataset, output_dir="./qwe
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
-        # report_to=None,  # 禁用wandb等报告工具
+        # report_to=None,  # disable reporting tools like wandb
         dataloader_pin_memory=False,
         remove_unused_columns=False,
     )
     
-    # 数据整理器
+    # Data collator
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=False,
     )
     
-    # 创建训练器
+    # Create Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -211,32 +217,32 @@ def train_model(model, tokenizer, train_dataset, eval_dataset, output_dir="./qwe
         tokenizer=tokenizer,
     )
     
-    # 开始训练
+    # Start training
     trainer.train()
     
-    # 保存模型
+    # Save model
     trainer.save_model()
     tokenizer.save_pretrained(output_dir)
-    print(f"模型已保存到: {output_dir}")
+    print(f"Model saved to: {output_dir}")
 
 def main():
-    """主函数"""
-    # 数据路径
-    csv_path = "datasets/risk_nasdaq/risk_deepseek_cleaned_nasdaq_news_full.csv"
+    """Main function"""
+    # Data path
+    csv_path = "risk_nasdaq/risk_deepseek_cleaned_nasdaq_news_full.csv"
     
-    # 加载和预处理数据
+    # Load and preprocess data
     df = load_and_preprocess_data(csv_path)
     
-    # 创建模型和分词器
+    # Create model and tokenizer
     model, tokenizer = create_model_and_tokenizer()
     
-    # 准备数据集
+    # Prepare dataset
     train_dataset, eval_dataset = prepare_dataset(df, tokenizer)
     
-    # 训练模型
+    # Train model
     train_model(model, tokenizer, train_dataset, eval_dataset)
     
-    print("训练完成！")
+    print("Training complete!")
 
 if __name__ == "__main__":
-    main() 
+    main()
