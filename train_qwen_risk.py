@@ -20,34 +20,34 @@ from peft import (
 import warnings
 warnings.filterwarnings("ignore")
 
-# 设置设备
+# Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"使用设备: {device}")
 
-# 数据预处理函数
+# Data preprocessing function
 def load_and_preprocess_data(csv_path):
-    """加载和预处理数据"""
-    print("正在加载数据...")
-    df = pd.read_csv(csv_path)[:1000]  # 限制样本数量
+    """Load and preprocess data"""
+    print("Loading data...")
+    df = pd.read_csv(csv_path)[:1000] # limit number of samples
     
-    # 过滤有效数据
+    # Filter valid data
     df = df[df['Lsa_summary'].notna() & df['risk_deepseek'].notna()]
-    df = df[df['risk_deepseek'] != 0]  # 移除无效的风险标签
+    df = df[df['risk_deepseek'] != 0]  # remove invalid risk labels
     
-    print(f"有效数据数量: {len(df)}")
-    print(f"风险分布: {df['risk_deepseek'].value_counts().sort_index()}")
+    print(f"Valid data count: {len(df)}")
+    print(f"Risk distribution: {df['risk_deepseek'].value_counts().sort_index()}")
     
     return df
 
 def create_prompt_template(text, risk_score, stock_symbol="STOCK"):
-    """创建训练提示模板 - 使用风险评估格式"""
-    # 使用与risk_deepseek_deepinfra.py相同的对话格式
+    """Create training prompt template – using risk assessment format"""
+    # Use the same conversation format as in risk_deepseek_deepinfra.py
     system_prompt = "Forget all your previous instructions. You are a financial expert specializing in risk assessment for stock recommendations. Based on a specific stock, provide a risk score from 1 to 5, where: 1 indicates very low risk, 2 indicates low risk, 3 indicates moderate risk (default if the news lacks any clear indication of risk), 4 indicates high risk, and 5 indicates very high risk. 1 summarized news will be passed in each time. Provide the score in the format shown below in the response from the assistant."
     
-    # 构建用户输入
+     # Construct user input
     user_content = f"News to Stock Symbol -- {stock_symbol}: {text}"
     
-    # 构建完整的对话
+    # # Build full conversation
     conversation = f"""System: {system_prompt}
 
 User: News to Stock Symbol -- AAPL: Apple (AAPL) increases 22%
@@ -65,8 +65,8 @@ Assistant: {risk_score}"""
     return conversation
 
 def prepare_dataset(df, tokenizer, max_length=512):
-    """准备训练数据集"""
-    print("正在准备数据集...")
+    """Prepare the training dataset"""
+    print("Preparing dataset...")
     
     texts = []
     labels = []
@@ -74,7 +74,7 @@ def prepare_dataset(df, tokenizer, max_length=512):
     for _, row in df.iterrows():
         text = row['Lsa_summary']
         risk_score = int(row['risk_deepseek'])
-        stock_symbol = row.get('Stock_symbol', 'STOCK')  # 获取股票符号，如果没有则使用默认值
+        stock_symbol = row.get('Stock_symbol', 'STOCK') # get stock symbol, default if missing
         
         if pd.isna(text) or text == '':
             continue
@@ -83,21 +83,21 @@ def prepare_dataset(df, tokenizer, max_length=512):
         texts.append(prompt)
         labels.append(risk_score)
     
-    # 分割训练集和验证集 (80% 训练, 20% 验证)
+    # Split into training and validation sets (80% train, 20% validation)
     train_texts, eval_texts, train_labels, eval_labels = train_test_split(
         texts, labels, test_size=0.2, random_state=42, stratify=None
     )
     
-    print(f"训练集大小: {len(train_texts)}")
-    print(f"验证集大小: {len(eval_texts)}")
+    print(f"Training set size: {len(train_texts)}")
+    print(f"Validation set size: {len(eval_texts)}")
     
-    # 创建训练数据集
+    # Create training dataset
     train_dataset = Dataset.from_dict({
         'text': train_texts,
         'label': train_labels
     })
     
-    # 创建验证数据集
+     # Create validation dataset
     eval_dataset = Dataset.from_dict({
         'text': eval_texts,
         'label': eval_labels
