@@ -1,7 +1,7 @@
-# 🧠 Financial Analysis Agent (MCP Multi-Agent System)
+# 🧠 AlphaAgent (MCP Multi-Agent System)
 
 ## 📘 Overview
-**Financial Analysis Agent** is an intelligent multi-agent system designed to automate and streamline stock market analysis.  
+**AlphaAgent** is an intelligent multi-agent system designed to automate and streamline stock market analysis.  
 Built using the **Model Context Protocol (MCP)**, this project integrates multiple specialized AI agents to analyze financial data, technical indicators, valuation metrics, and news for **U.S. stocks**.
 
 The system delivers a **comprehensive investment summary** by combining the reasoning of different analytical perspectives, enabling data-driven investment insights with minimal manual effort.
@@ -55,7 +55,7 @@ Example output:
 
 ## 📂 Project Structure
 
-Financial_Analysis_Agent/
+AlphaAgent/
 │
 ├── src/
 │   ├── agents/                # Core analysis agents (technical, value, fundamental, summary)
@@ -89,7 +89,7 @@ Financial_Analysis_Agent/
 
 ## 👥 Team
 
-**Project Name:** AlphaAgents  
+**Project Name:** AlphaAgent  
 **Team Members:** Keying Guo, Le Li, Pingyi Xu, Xiao Xu  
 
 ---
